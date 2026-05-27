@@ -266,31 +266,38 @@ if [ "$ALREADY_INSTALLED" -eq 0 ]; then
   ok "Downloaded $INSTALLER_FILE ($(wc -c < "$INSTALLER_FILE") bytes)"
 
   # Drive the interactive installer. Patterns are intentionally permissive —
-  # cPGuard installer wording changes between releases.
-  cat > /usr/local/src/bh-cpg-expect.exp <<EXPECT
+  # cPGuard installer wording changes between releases. We use a quoted
+  # heredoc (no shell expansion) and substitute __INSTALLER__ + __LICENSE__
+  # afterward, so all the Tcl backslash/bracket escapes survive untouched.
+  cat > /usr/local/src/bh-cpg-expect.exp <<'EXPECT'
 #!/usr/bin/expect -f
 set timeout 1800
 log_user 1
-spawn bash /usr/local/src/$INSTALLER_FILE $LICENSE
+spawn bash /usr/local/src/__INSTALLER__ __LICENSE__
 
 expect {
-  -re "(?i)(web server|webserver)\[^\n\]*:"               { send "apache\r"; exp_continue }
-  -re "(?i)web_?server_?conf\[^\n\]*:"                    { send "/usr/local/apache/conf.d/vhosts/*.conf\r"; exp_continue }
-  -re "(?i)domain_?list\[^\n\]*:"                         { send "\r"; exp_continue }
-  -re "(?i)user_?list\[^\n\]*:"                           { send "\r"; exp_continue }
-  -re "(?i)waf_?server\[^\n\]*:"                          { send "apache\r"; exp_continue }
-  -re "(?i)waf_?server_?conf\[^\n\]*:"                    { send "/usr/local/apache/cpguard.conf\r"; exp_continue }
-  -re "(?i)(restart|reload)\[^\n\]*command\[^\n\]*:"      { send "systemctl restart httpd\r"; exp_continue }
-  -re "(?i)(audit|modsec).*log\[^\n\]*:"                  { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
-  -re "(?i)error_?log\[^\n\]*:"                           { send "\r"; exp_continue }
-  -re "(?i)\\\[y/n\\\]"                                   { send "y\r"; exp_continue }
+  -re {(?i)(web server|webserver)[^\n]*:}              { send "apache\r"; exp_continue }
+  -re {(?i)web_?server_?conf[^\n]*:}                   { send "/usr/local/apache/conf.d/vhosts/*.conf\r"; exp_continue }
+  -re {(?i)domain_?list[^\n]*:}                        { send "\r"; exp_continue }
+  -re {(?i)user_?list[^\n]*:}                          { send "\r"; exp_continue }
+  -re {(?i)waf_?server[^\n]*:}                         { send "apache\r"; exp_continue }
+  -re {(?i)waf_?server_?conf[^\n]*:}                   { send "/usr/local/apache/cpguard.conf\r"; exp_continue }
+  -re {(?i)(restart|reload)[^\n]*command[^\n]*:}       { send "systemctl restart httpd\r"; exp_continue }
+  -re {(?i)(audit|modsec).*log[^\n]*:}                 { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
+  -re {(?i)error_?log[^\n]*:}                          { send "\r"; exp_continue }
   eof
   timeout { puts "EXPECT TIMEOUT"; exit 124 }
 }
 
 catch wait result
-exit [lindex \$result 3]
+exit [lindex $result 3]
 EXPECT
+
+  # Substitute placeholders (license keys can contain | & \ so use a delimiter
+  # that's safe — the # char is fine because installer filenames and license
+  # keys don't contain it).
+  sed -i "s#__INSTALLER__#${INSTALLER_FILE}#g; s#__LICENSE__#${LICENSE}#g" \
+    /usr/local/src/bh-cpg-expect.exp
 
   chmod +x /usr/local/src/bh-cpg-expect.exp
   /usr/local/src/bh-cpg-expect.exp 2>&1 | tee -a "$LOG"
