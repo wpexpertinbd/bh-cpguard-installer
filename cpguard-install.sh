@@ -267,7 +267,7 @@ if [ "$ALREADY_INSTALLED" -eq 0 ]; then
 
   # Drive the interactive installer. Patterns are intentionally permissive —
   # cPGuard installer wording changes between releases.
-  cat > /tmp/bh-cpg-expect.exp <<EXPECT
+  cat > /usr/local/src/bh-cpg-expect.exp <<EXPECT
 #!/usr/bin/expect -f
 set timeout 1800
 log_user 1
@@ -292,10 +292,10 @@ catch wait result
 exit [lindex \$result 3]
 EXPECT
 
-  chmod +x /tmp/bh-cpg-expect.exp
-  /tmp/bh-cpg-expect.exp 2>&1 | tee -a "$LOG"
+  chmod +x /usr/local/src/bh-cpg-expect.exp
+  /usr/local/src/bh-cpg-expect.exp 2>&1 | tee -a "$LOG"
   EXP_RC=${PIPESTATUS[0]}
-  rm -f /tmp/bh-cpg-expect.exp
+  rm -f /usr/local/src/bh-cpg-expect.exp
 
   [ "$EXP_RC" -eq 0 ] || warn "Installer exited rc=$EXP_RC — continuing to verify"
 
