@@ -242,115 +242,49 @@ done
 command -v firewall-cmd >/dev/null && firewall-cmd --reload >/dev/null 2>&1 || true
 ok "Whitelisted: ${CPG_IPS[*]}"
 
-# ---------- 3. Install cPGuard (via expect) ----------
-log "[3/9] Installing cPGuard ($EDITION)..."
+# ---------- 3. cPGuard install (manual step) ----------
+log "[3/9] Checking cPGuard install state..."
 
 if [ "$ALREADY_INSTALLED" -eq 0 ]; then
-  command -v expect >/dev/null 2>&1 || {
-    log "Installing expect..."
-    dnf install -y expect >/dev/null 2>&1 || yum install -y expect >/dev/null 2>&1 || die "Failed to install expect"
-  }
+  # cPGuard's interactive installer uses ANSI/terminal control codes that
+  # don't play well with expect-driven automation (prompts get double-sent,
+  # input gets rejected, etc — burned several hours on this). Easier and
+  # more reliable: run the cPGuard installer MANUALLY (2 min of typing),
+  # then re-run this script for the post-install patches/license/verify.
+  cat <<EOF | tee -a "$LOG"
 
-  if [ "$EDITION" = "lite" ]; then
-    INSTALLER_URL="https://downloads.opsshield.com/cpguard/cpguard_lite_install.sh"
-    INSTALLER_FILE="cpguard_lite_install.sh"
-  else
-    INSTALLER_URL="https://downloads.opsshield.com/cpguard/cpguard_install.sh"
-    INSTALLER_FILE="cpguard_install.sh"
-  fi
+================================================================
+  cPGuard is not installed. Please install it now MANUALLY, then
+  re-run this script. Two commands:
 
-  cd /usr/local/src
-  rm -f "$INSTALLER_FILE"
-  curl -fsSL "$INSTALLER_URL" -o "$INSTALLER_FILE" || die "Failed to download installer"
-  chmod +x "$INSTALLER_FILE"
-  ok "Downloaded $INSTALLER_FILE ($(wc -c < "$INSTALLER_FILE") bytes)"
+  STEP A — Download + run cPGuard installer:
+    cd /usr/local/src
+    rm -f cpguard_install.sh
+    curl -fsSL https://downloads.opsshield.com/cpguard/cpguard_install.sh -o cpguard_install.sh
+    bash cpguard_install.sh ${LICENSE}
 
-  # Drive the interactive installer. Patterns are intentionally permissive —
-  # cPGuard installer wording changes between releases. We use a quoted
-  # heredoc (no shell expansion) and substitute __INSTALLER__ + __LICENSE__
-  # afterward, so all the Tcl backslash/bracket escapes survive untouched.
-  cat > /usr/local/src/bh-cpg-expect.exp <<'EXPECT'
-#!/usr/bin/expect -f
-set timeout 1800
-log_user 1
-spawn bash /usr/local/src/__INSTALLER__ __LICENSE__
+  Answer the prompts in this exact order:
+    web_server               = apache
+    web_server_conf          = /usr/local/apache/conf.d/vhosts/*.conf
+    domain_list              = (just press Enter)
+    user_list                = (just press Enter)
+    Do you want suspend hook? [y/n] = n
+    waf_server               = apache
+    waf_server_conf          = /usr/local/apache/cpguard.conf
+    webserver_restart_command = systemctl restart httpd
+    waf_audit_log            = /usr/local/apache/logs/modsec_audit.log
+    waf_error_log            = (just press Enter)
 
-# Sequential expect — each prompt waited for and answered exactly ONCE.
-# Avoids the exp_continue double-send bug we hit on cPGuard installer
-# (the prompt redraws with ANSI control codes, exp_continue would re-match
-# the same prompt and send the answer twice, producing "apacheapache" etc).
+  Wait until you see "Installation complete".
 
-proc wait_prompt {pat answer {label ""}} {
-  global timeout
-  expect {
-    -re $pat {
-      send -- "$answer\r"
-      if {$label ne ""} { puts ">>> answered $label" }
-    }
-    timeout {
-      puts "EXPECT TIMEOUT waiting for: $pat"
-      exit 124
-    }
-    eof {
-      puts "EXPECT EOF before: $pat"
-      exit 125
-    }
-  }
-}
-
-set timeout 600
-
-# Each prompt looks like:  ESC[96m<field> ESC[0m=
-# [^=]* spans the ANSI sequences between field name and the "=".
-# \M = Tcl end-of-word boundary (so "web_server" doesn't match "web_server_conf").
-
-wait_prompt {(?i)web_server\M[^=]*=}                "apache"                                          "web_server"
-wait_prompt {(?i)web_server_conf\M[^=]*=}           "/usr/local/apache/conf.d/vhosts/*.conf"          "web_server_conf"
-wait_prompt {(?i)domain_?list\M[^=]*=}              ""                                                "domain_list"
-wait_prompt {(?i)user_?list\M[^=]*=}                ""                                                "user_list"
-
-# CWP suspend-hook offer (y/n). Answer N.
-# If it doesn't appear (some cPGuard versions skip it), fall through to waf_server.
-expect {
-  -re {\[y/n\][^:]*:}             { send -- "n\r"; puts ">>> answered y/n=n" }
-  -re {(?i)waf_server\M[^=]*=}    { send -- "apache\r"; puts ">>> answered waf_server (skipped y/n)"; set skip_waf_server 1 }
-  timeout                         { puts "EXPECT TIMEOUT waiting for y/n or waf_server"; exit 124 }
-}
-
-if {![info exists skip_waf_server]} {
-  wait_prompt {(?i)waf_server\M[^=]*=}             "apache"                                          "waf_server"
-}
-
-wait_prompt {(?i)waf_server_conf\M[^=]*=}          "/usr/local/apache/cpguard.conf"                  "waf_server_conf"
-wait_prompt {(?i)(webserver|web_server)_restart_command\M[^=]*=}  "systemctl restart httpd"          "restart_command"
-wait_prompt {(?i)waf_(server_)?audit_log\M[^=]*=}  "/usr/local/apache/logs/modsec_audit.log"          "waf_audit_log"
-wait_prompt {(?i)waf_(server_)?error_log\M[^=]*=}  ""                                                "waf_error_log"
-
-# Drain remaining output until installer finishes
-expect eof
-
-catch wait result
-exit [lindex $result 3]
-EXPECT
-
-  # Substitute placeholders (license keys can contain | & \ so use a delimiter
-  # that's safe — the # char is fine because installer filenames and license
-  # keys don't contain it).
-  sed -i "s#__INSTALLER__#${INSTALLER_FILE}#g; s#__LICENSE__#${LICENSE}#g" \
-    /usr/local/src/bh-cpg-expect.exp
-
-  chmod +x /usr/local/src/bh-cpg-expect.exp
-  /usr/local/src/bh-cpg-expect.exp 2>&1 | tee -a "$LOG"
-  EXP_RC=${PIPESTATUS[0]}
-  rm -f /usr/local/src/bh-cpg-expect.exp
-
-  [ "$EXP_RC" -eq 0 ] || warn "Installer exited rc=$EXP_RC — continuing to verify"
-
-  [ -d /opt/cpguard ] || die "Installer ran but /opt/cpguard missing — check $LOG"
-  command -v cpgcli >/dev/null 2>&1 || die "cpgcli not in PATH after install"
-  ok "cPGuard binary installed"
+  STEP B — Re-run THIS script (it will detect cPGuard installed and
+  do all the post-install patches + license + WAF + verify):
+    bash $0 ${LICENSE}
+================================================================
+EOF
+  die "Manual cPGuard install required — see instructions above."
 else
-  ok "Skipped installer (already present)"
+  ok "cPGuard already installed ($CUR_VER) — proceeding to post-install steps"
 fi
 
 CPG_VER=$(cpgcli --version 2>/dev/null | head -1 || echo unknown)

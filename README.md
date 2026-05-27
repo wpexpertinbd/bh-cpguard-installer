@@ -72,14 +72,43 @@ The script's preflight aborts with this instruction if it detects OWASP-old is m
 
 **Heads-up for clients with Comodo-specific whitelists:** during the brief OWASP window (between the CWP switch and our installer finishing), sites may throw extra false-positive 403s because Comodo whitelists don't apply under OWASP. Tell the client to expect 5 minutes of possible noise per server. After cPGuard is in and active, false-positive rate is typically lower than Comodo was (cPGuard ships sensible defaults; we only disable rule 1006000).
 
-## Single-server use
+## Single-server use (two-step)
 
-SSH to the target, then:
+The cPGuard installer is interactive and its ANSI/terminal control sequences don't reliably automate via `expect`. We tried — burned hours on it. Far more reliable: run cPGuard's installer manually (~2 min of typing), then let this script do everything else.
+
+### Step A — Run cPGuard installer manually
+
+SSH to the target. Make sure CWP has **OWASP old** ruleset active first (see prerequisite above), then:
+
+```bash
+cd /usr/local/src
+rm -f cpguard_install.sh
+curl -fsSL https://downloads.opsshield.com/cpguard/cpguard_install.sh -o cpguard_install.sh
+bash cpguard_install.sh CPG-YOUR-LICENSE-KEY
+```
+
+Answer the prompts in this exact order:
+
+| Prompt | Answer |
+|---|---|
+| `web_server =` | `apache` |
+| `web_server_conf =` | `/usr/local/apache/conf.d/vhosts/*.conf` |
+| `domain_list =` | (just press Enter) |
+| `user_list =` | (just press Enter) |
+| `Do you want to use it? [y/n]` | `n` |
+| `waf_server =` | `apache` |
+| `waf_server_conf =` | `/usr/local/apache/cpguard.conf` |
+| `webserver_restart_command =` | `systemctl restart httpd` |
+| `waf_audit_log =` | `/usr/local/apache/logs/modsec_audit.log` |
+| `waf_error_log =` | (just press Enter) |
+
+Wait until you see `Installation complete`.
+
+### Step B — Run this script for everything else
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wpexpertinbd/bh-cpguard-installer/main/cpguard-install.sh \
   -o /root/cpguard-install.sh
-chmod +x /root/cpguard-install.sh
 bash /root/cpguard-install.sh CPG-YOUR-LICENSE-KEY
 ```
 
@@ -89,6 +118,10 @@ Or one-liner:
 curl -fsSL https://raw.githubusercontent.com/wpexpertinbd/bh-cpguard-installer/main/cpguard-install.sh \
   | bash -s -- CPG-YOUR-LICENSE-KEY
 ```
+
+This handles everything else: IP whitelist, mod_security.conf patch (cpguard.conf Include inside `<IfModule>` block), BH exclusions (rule 1006000), CSF migration (auto-skipped on PHP < 8.1), license refresh, WAF enable, Apache test+restart with rollback, full verification.
+
+**If you run Step B WITHOUT doing Step A first**, the script prints the manual instructions and exits cleanly — no half-installed state.
 
 Env overrides (optional):
 
