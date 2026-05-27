@@ -19,7 +19,7 @@ Per server (`cpguard-install.sh`):
    - audit log = `/usr/local/apache/logs/modsec_audit.log`
    - domain_list / user_list / error_log = blank
 4. **Patch `mod_security.conf`** — comments the OWASP-old Include, adds the cPGuard Include. Snapshots the original to `.bh-preinstall` first so we can roll back if Apache config-tests fail.
-5. **Apply BiswasHost SecRuleRemoveById exclusions** → `/etc/cpguard/custom-exclusions.conf` (38 rules covering CWP, WordPress, Joomla, Drupal, phpMyAdmin, webftp_simple + rule `1006000` for BD consumer-ISP false positives on ecommerce sites).
+5. **Apply BiswasHost cPGuard exclusions** → `/etc/cpguard/custom-exclusions.conf` — just rule `1006000` (cPGuard's Proxy IPDB block, which false-positives BD consumer ISPs on ecommerce sites). Older OWASP/Comodo rule IDs are NOT included because cPGuard uses its own ruleset namespace — `SecRuleRemoveById` against `210xxx`/`950xxx`/`960xxx`/`981xxx` etc. is a no-op under cPGuard.
 6. **Migrate CSF rules** (if CSF detected) via `/opt/cpguard/app/scripts/csf_migration.php`.
 7. **Apply license** + `cpgcli waf --enable` + `cpgcli cleanup --enable`.
 8. **`httpd -t` + restart** — rolls back on config failure.
@@ -64,7 +64,7 @@ The script's preflight aborts with this instruction if it detects OWASP-old is m
 
 **This is transitional.** Once cPGuard is in, the active ruleset becomes cPGuard's own — neither Comodo nor OWASP is active anymore. The OWASP switch is just a ~5-minute prerequisite during install.
 
-**Heads-up for clients with Comodo-specific whitelists:** during the brief OWASP window (between the CWP switch and our installer finishing), sites may throw extra false-positive 403s because Comodo whitelists don't apply under OWASP. Tell the client to expect 5 minutes of possible noise per server. After cPGuard is in with our 38-rule exclusions block, false-positive rate is typically lower than Comodo was.
+**Heads-up for clients with Comodo-specific whitelists:** during the brief OWASP window (between the CWP switch and our installer finishing), sites may throw extra false-positive 403s because Comodo whitelists don't apply under OWASP. Tell the client to expect 5 minutes of possible noise per server. After cPGuard is in and active, false-positive rate is typically lower than Comodo was (cPGuard ships sensible defaults; we only disable rule 1006000).
 
 ## Single-server use
 

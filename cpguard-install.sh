@@ -236,61 +236,18 @@ else
   warn "$MSEC_CONF missing — installer may not have created it. Skipping patch."
 fi
 
-# ---------- 5. Standard BiswasHost exclusions ----------
+# ---------- 5. BiswasHost cPGuard exclusions ----------
 if [ "$APPLY_EXCLUSIONS" = "1" ]; then
-  log "[5/9] Writing BiswasHost SecRuleRemoveById exclusions..."
+  log "[5/9] Writing BiswasHost cPGuard exclusions..."
   mkdir -p /etc/cpguard
   cat > /etc/cpguard/custom-exclusions.conf <<'EXCL'
 # BH-CPGUARD-EXCLUSIONS — managed by cpguard-install.sh, safe to edit
-# BiswasHost standard set: CWP + popular CMS false positives + BD ISP fix
+#
+# Only cPGuard-native rule IDs belong here. OWASP/Comodo rule IDs
+# (210xxx, 950xxx, 960xxx, 973xxx, 981xxx, etc.) don't exist in
+# cPGuard's ruleset, so SecRuleRemoveById against them is a no-op.
 
-# CWP
-SecRuleRemoveById 218500
-SecRuleRemoveById 210492
-SecRuleRemoveById 225170
-SecRuleRemoveById 210730
-SecRuleRemoveById 210380
-SecRuleRemoveById 960017
-SecRuleRemoveById 960015
-SecRuleRemoveById 960009
-
-# Joomla
-SecRuleRemoveById 960024
-SecRuleRemoveById 950120
-SecRuleRemoveById 981173
-SecRuleRemoveById 950901
-SecRuleRemoveById 981257
-SecRuleRemoveById 981245
-SecRuleRemoveById 973338
-SecRuleRemoveById 973300
-SecRuleRemoveById 973304
-SecRuleRemoveById 973333
-
-# WordPress
-SecRuleRemoveById 981242
-SecRuleRemoveById 981246
-SecRuleRemoveById 981243
-SecRuleRemoveById 959073
-SecRuleRemoveById 958030
-
-# Drupal
-SecRuleRemoveById 981231
-
-# webftp_simple
-SecRuleRemoveById 950922
-SecRuleRemoveById 981000
-SecRuleRemoveById 950109
-
-# phpMyAdmin
-SecRuleRemoveById 981205
-SecRuleRemoveById 970901
-SecRuleRemoveById 960904
-SecRuleRemoveById 960915
-SecRuleRemoveById 981318
-SecRuleRemoveById 981320
-SecRuleRemoveById 981240
-
-# BD consumer ISP false-positive on ecommerce sites
+# Proxy IPDB block — false-positives BD consumer ISPs on ecommerce sites
 SecRuleRemoveById 1006000
 # END BH-CPGUARD-EXCLUSIONS
 EXCL
@@ -303,7 +260,7 @@ EXCL
 SecRuleRemoveById 1006000
 EOF
   fi
-  ok "Exclusions written (38 rules)"
+  ok "Exclusions written (1 cPGuard-native rule: 1006000)"
 else
   log "[5/9] Skipped exclusions (APPLY_EXCLUSIONS=0)"
 fi
