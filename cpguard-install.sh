@@ -282,6 +282,9 @@ expect {
   # Order: MOST SPECIFIC FIRST so longer field names win over shorter prefixes.
   -re {(?i)web_server_conf\M[^=]*=}                { send "/usr/local/apache/conf.d/vhosts/*.conf\r"; exp_continue }
   -re {(?i)waf_server_conf\M[^=]*=}                { send "/usr/local/apache/cpguard.conf\r"; exp_continue }
+  # Actual cPGuard field names are waf_audit_log / waf_error_log (no "_server_")
+  -re {(?i)waf_audit_log\M[^=]*=}                  { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
+  -re {(?i)waf_error_log\M[^=]*=}                  { send "\r"; exp_continue }
   -re {(?i)waf_server_audit_log\M[^=]*=}           { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
   -re {(?i)waf_server_error_log\M[^=]*=}           { send "\r"; exp_continue }
   -re {(?i)(webserver|web_server)_restart_command\M[^=]*=}  { send "systemctl restart httpd\r"; exp_continue }
