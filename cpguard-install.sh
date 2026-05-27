@@ -276,15 +276,19 @@ log_user 1
 spawn bash /usr/local/src/__INSTALLER__ __LICENSE__
 
 expect {
-  -re {(?i)(web server|webserver)[^\n]*:}              { send "apache\r"; exp_continue }
-  -re {(?i)web_?server_?conf[^\n]*:}                   { send "/usr/local/apache/conf.d/vhosts/*.conf\r"; exp_continue }
-  -re {(?i)domain_?list[^\n]*:}                        { send "\r"; exp_continue }
-  -re {(?i)user_?list[^\n]*:}                          { send "\r"; exp_continue }
-  -re {(?i)waf_?server[^\n]*:}                         { send "apache\r"; exp_continue }
-  -re {(?i)waf_?server_?conf[^\n]*:}                   { send "/usr/local/apache/cpguard.conf\r"; exp_continue }
-  -re {(?i)(restart|reload)[^\n]*command[^\n]*:}       { send "systemctl restart httpd\r"; exp_continue }
-  -re {(?i)(audit|modsec).*log[^\n]*:}                 { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
-  -re {(?i)error_?log[^\n]*:}                          { send "\r"; exp_continue }
+  # cPGuard prompts look like:  [96mweb_server [0m=    (ANSI colors + " = " ending)
+  # Use [^=]* so we span ANSI ESC sequences between the field name and the "=".
+  # Use \M (Tcl end-of-word) so "web_server" doesn't accidentally match "web_server_conf".
+  # Order: MOST SPECIFIC FIRST so longer field names win over shorter prefixes.
+  -re {(?i)web_server_conf\M[^=]*=}                { send "/usr/local/apache/conf.d/vhosts/*.conf\r"; exp_continue }
+  -re {(?i)waf_server_conf\M[^=]*=}                { send "/usr/local/apache/cpguard.conf\r"; exp_continue }
+  -re {(?i)waf_server_audit_log\M[^=]*=}           { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
+  -re {(?i)waf_server_error_log\M[^=]*=}           { send "\r"; exp_continue }
+  -re {(?i)(webserver|web_server)_restart_command\M[^=]*=}  { send "systemctl restart httpd\r"; exp_continue }
+  -re {(?i)domain_?list\M[^=]*=}                   { send "\r"; exp_continue }
+  -re {(?i)user_?list\M[^=]*=}                     { send "\r"; exp_continue }
+  -re {(?i)web_server\M[^=]*=}                     { send "apache\r"; exp_continue }
+  -re {(?i)waf_server\M[^=]*=}                     { send "apache\r"; exp_continue }
   eof
   timeout { puts "EXPECT TIMEOUT"; exit 124 }
 }
