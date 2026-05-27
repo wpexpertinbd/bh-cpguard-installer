@@ -371,9 +371,26 @@ fi
 if [ "$MIGRATE_CSF" = "1" ] && [ "$CSF_PRESENT" -eq 1 ]; then
   log "[6/9] Migrating CSF rules to cPGuard..."
   if [ -f /opt/cpguard/app/scripts/csf_migration.php ]; then
-    php /opt/cpguard/app/scripts/csf_migration.php 2>&1 | tee -a "$LOG" || warn "CSF migration script reported errors — review log"
-    SUMMARY_KV csf_migrated "yes"
-    ok "CSF rules imported"
+    # cPGuard's migration script requires PHP >= 8.1 (Composer platform_check).
+    # On older CWP boxes with PHP 7.x, it crashes — skip cleanly rather than
+    # spamming useless error output.
+    PHP_VER=$(php -r 'echo PHP_VERSION;' 2>/dev/null | head -1)
+    PHP_MAJ=$(echo "$PHP_VER" | cut -d. -f1)
+    PHP_MIN=$(echo "$PHP_VER" | cut -d. -f2)
+    PHP_OK=0
+    if [ "${PHP_MAJ:-0}" -ge 8 ] && [ "${PHP_MIN:-0}" -ge 1 ]; then PHP_OK=1; fi
+    [ "${PHP_MAJ:-0}" -ge 9 ] && PHP_OK=1
+
+    if [ "$PHP_OK" = "1" ]; then
+      php /opt/cpguard/app/scripts/csf_migration.php 2>&1 | tee -a "$LOG" || warn "CSF migration script reported errors — review log"
+      SUMMARY_KV csf_migrated "yes"
+      ok "CSF rules imported"
+    else
+      warn "Default PHP is $PHP_VER — cPGuard csf_migration.php needs PHP >= 8.1"
+      warn "Skipping auto-migration. CSF rules remain untouched in /etc/csf/"
+      warn "Manual fix: run with PHP 8.1+ from CWP, e.g. /opt/alt/php81/usr/bin/php /opt/cpguard/app/scripts/csf_migration.php"
+      SUMMARY_KV csf_migrated "skipped_php_version"
+    fi
   else
     warn "csf_migration.php missing (cPGuard version too old?)"
     SUMMARY_KV csf_migrated "no_script"
