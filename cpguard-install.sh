@@ -264,16 +264,21 @@ if [ "$ALREADY_INSTALLED" -eq 0 ]; then
     bash cpguard_install.sh ${LICENSE}
 
   Answer the prompts in this exact order:
-    web_server               = apache
-    web_server_conf          = /usr/local/apache/conf.d/vhosts/*.conf
-    domain_list              = (just press Enter)
-    user_list                = (just press Enter)
-    Do you want suspend hook? [y/n] = n
-    waf_server               = apache
-    waf_server_conf          = /usr/local/apache/cpguard.conf
-    webserver_restart_command = systemctl restart httpd
-    waf_audit_log            = /usr/local/apache/logs/modsec_audit.log
-    waf_error_log            = (just press Enter)
+
+  +-------------------------------------+--------------------------------------------------+
+  | Prompt                              | Your answer                                      |
+  +-------------------------------------+--------------------------------------------------+
+  | web_server =                        | apache                                           |
+  | web_server_conf =                   | /usr/local/apache/conf.d/vhosts/*.conf           |
+  | domain_list =                       | (just hit Enter)                                 |
+  | user_list =                         | (just hit Enter)                                 |
+  | Do you want to use it? [y/n]        | n                                                |
+  | waf_server =                        | apache                                           |
+  | waf_server_conf =                   | /usr/local/apache/cpguard.conf                   |
+  | webserver_restart_command =         | systemctl restart httpd                          |
+  | waf_audit_log =                     | /usr/local/apache/logs/modsec_audit.log          |
+  | waf_error_log =                     | (just hit Enter)                                 |
+  +-------------------------------------+--------------------------------------------------+
 
   Wait until you see "Installation complete".
 
