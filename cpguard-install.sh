@@ -275,30 +275,59 @@ set timeout 1800
 log_user 1
 spawn bash /usr/local/src/__INSTALLER__ __LICENSE__
 
-expect {
-  # cPGuard prompts look like:  [96mweb_server [0m=    (ANSI colors + " = " ending)
-  # Use [^=]* so we span ANSI ESC sequences between the field name and the "=".
-  # Use \M (Tcl end-of-word) so "web_server" doesn't accidentally match "web_server_conf".
-  # Order: MOST SPECIFIC FIRST so longer field names win over shorter prefixes.
-  -re {(?i)web_server_conf\M[^=]*=}                { send "/usr/local/apache/conf.d/vhosts/*.conf\r"; exp_continue }
-  -re {(?i)waf_server_conf\M[^=]*=}                { send "/usr/local/apache/cpguard.conf\r"; exp_continue }
-  # Actual cPGuard field names are waf_audit_log / waf_error_log (no "_server_")
-  -re {(?i)waf_audit_log\M[^=]*=}                  { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
-  -re {(?i)waf_error_log\M[^=]*=}                  { send "\r"; exp_continue }
-  -re {(?i)waf_server_audit_log\M[^=]*=}           { send "/usr/local/apache/logs/modsec_audit.log\r"; exp_continue }
-  -re {(?i)waf_server_error_log\M[^=]*=}           { send "\r"; exp_continue }
-  -re {(?i)(webserver|web_server)_restart_command\M[^=]*=}  { send "systemctl restart httpd\r"; exp_continue }
-  -re {(?i)domain_?list\M[^=]*=}                   { send "\r"; exp_continue }
-  -re {(?i)user_?list\M[^=]*=}                     { send "\r"; exp_continue }
-  -re {(?i)web_server\M[^=]*=}                     { send "apache\r"; exp_continue }
-  -re {(?i)waf_server\M[^=]*=}                     { send "apache\r"; exp_continue }
-  # Yes/No prompts (e.g. CWP suspend hook install) — answer NO by default.
-  # \[y/n\] matches literal [y/n] in Tcl regex (escaping the bracket).
-  -re {\[y/n\][^:]*:}                              { send "n\r"; exp_continue }
-  -re {\[y/n\]\s*$}                                { send "n\r"; exp_continue }
-  eof
-  timeout { puts "EXPECT TIMEOUT"; exit 124 }
+# Sequential expect — each prompt waited for and answered exactly ONCE.
+# Avoids the exp_continue double-send bug we hit on cPGuard installer
+# (the prompt redraws with ANSI control codes, exp_continue would re-match
+# the same prompt and send the answer twice, producing "apacheapache" etc).
+
+proc wait_prompt {pat answer {label ""}} {
+  global timeout
+  expect {
+    -re $pat {
+      send -- "$answer\r"
+      if {$label ne ""} { puts ">>> answered $label" }
+    }
+    timeout {
+      puts "EXPECT TIMEOUT waiting for: $pat"
+      exit 124
+    }
+    eof {
+      puts "EXPECT EOF before: $pat"
+      exit 125
+    }
+  }
 }
+
+set timeout 600
+
+# Each prompt looks like:  ESC[96m<field> ESC[0m=
+# [^=]* spans the ANSI sequences between field name and the "=".
+# \M = Tcl end-of-word boundary (so "web_server" doesn't match "web_server_conf").
+
+wait_prompt {(?i)web_server\M[^=]*=}                "apache"                                          "web_server"
+wait_prompt {(?i)web_server_conf\M[^=]*=}           "/usr/local/apache/conf.d/vhosts/*.conf"          "web_server_conf"
+wait_prompt {(?i)domain_?list\M[^=]*=}              ""                                                "domain_list"
+wait_prompt {(?i)user_?list\M[^=]*=}                ""                                                "user_list"
+
+# CWP suspend-hook offer (y/n). Answer N.
+# If it doesn't appear (some cPGuard versions skip it), fall through to waf_server.
+expect {
+  -re {\[y/n\][^:]*:}             { send -- "n\r"; puts ">>> answered y/n=n" }
+  -re {(?i)waf_server\M[^=]*=}    { send -- "apache\r"; puts ">>> answered waf_server (skipped y/n)"; set skip_waf_server 1 }
+  timeout                         { puts "EXPECT TIMEOUT waiting for y/n or waf_server"; exit 124 }
+}
+
+if {![info exists skip_waf_server]} {
+  wait_prompt {(?i)waf_server\M[^=]*=}             "apache"                                          "waf_server"
+}
+
+wait_prompt {(?i)waf_server_conf\M[^=]*=}          "/usr/local/apache/cpguard.conf"                  "waf_server_conf"
+wait_prompt {(?i)(webserver|web_server)_restart_command\M[^=]*=}  "systemctl restart httpd"          "restart_command"
+wait_prompt {(?i)waf_(server_)?audit_log\M[^=]*=}  "/usr/local/apache/logs/modsec_audit.log"          "waf_audit_log"
+wait_prompt {(?i)waf_(server_)?error_log\M[^=]*=}  ""                                                "waf_error_log"
+
+# Drain remaining output until installer finishes
+expect eof
 
 catch wait result
 exit [lindex $result 3]
