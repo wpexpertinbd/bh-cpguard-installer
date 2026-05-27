@@ -68,9 +68,19 @@ SUMMARY_KV os "$PRETTY_NAME"
 [ -d /usr/local/cwpsrv ] || die "CWP not detected (/usr/local/cwpsrv missing)"
 ok "CWP detected"
 
-command -v httpd  >/dev/null || die "httpd not found (Apache required)"
+# Apache detection: CWP often installs httpd at /usr/local/apache/bin/httpd
+# without putting it in root's PATH. Check both locations.
+HTTPD_BIN=""
+if command -v httpd >/dev/null 2>&1; then
+  HTTPD_BIN=$(command -v httpd)
+elif [ -x /usr/local/apache/bin/httpd ]; then
+  HTTPD_BIN=/usr/local/apache/bin/httpd
+  # Add to PATH for the rest of the script (httpd -t check, etc.)
+  export PATH="/usr/local/apache/bin:$PATH"
+fi
+[ -n "$HTTPD_BIN" ] || die "Apache httpd binary not found (checked PATH + /usr/local/apache/bin/)"
 [ -d /usr/local/apache/conf.d ] || die "Apache conf.d missing — non-standard CWP build?"
-ok "Apache present"
+ok "Apache present ($HTTPD_BIN)"
 
 # CentOS 7 reached EOL on 2024-06-30 — official mirrors stopped serving it.
 # Overwrite Base/EPEL/MariaDB repos with archive URLs so yum works again.
