@@ -33,6 +33,12 @@ Exit code: `0` clean, `2` partial (one+ verify check failed), `1` fatal.
 
 Idempotent — safe to re-run. Logs to `/var/log/bh-cpguard-install.log`. A parsed summary lands in `/tmp/bh-cpg-summary.txt` for the dispatcher to slurp.
 
+## CentOS 7 servers — read this first
+
+CentOS 7 hit end-of-life on **2024-06-30**. Mirrors stopped serving it, so `yum` returns HTTP 404 on every package fetch and our installer can't install its dependencies. The script auto-detects CentOS 7 and repoints the broken repos (Base, EPEL, MariaDB) to their archives. If anything goes sideways, **[docs/centos7-repo-fix.md](docs/centos7-repo-fix.md)** has the full manual procedure to copy-paste.
+
+Tell the client: cPGuard helps a lot, but CentOS 7 stopped getting kernel CVE patches in June 2024 — recommend AlmaLinux 9 migration within 3-6 months.
+
 ## Prerequisite: OWASP-old ModSec ruleset must be active
 
 cPGuard's installer expects `/usr/local/apache/modsecurity-owasp-old/` to exist before it runs (it patches around that ruleset's Include line). **If the server is on Comodo WAF**, you must switch it to OWASP first:

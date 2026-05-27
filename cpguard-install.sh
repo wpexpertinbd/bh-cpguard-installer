@@ -73,22 +73,83 @@ command -v httpd  >/dev/null || die "httpd not found (Apache required)"
 ok "Apache present"
 
 # CentOS 7 reached EOL on 2024-06-30 — official mirrors stopped serving it.
-# Repoint repos to vault.centos.org (the archive) so yum can install deps.
-# Idempotent: only rewrites the mirrorlist/baseurl lines if not already done.
+# Overwrite Base/EPEL/MariaDB repos with archive URLs so yum works again.
+# See docs/centos7-repo-fix.md for the manual procedure if this misbehaves.
 if [ "$ID" = "centos" ] && [ "${VERSION_ID%%.*}" = "7" ]; then
   warn "CentOS 7 is EOL (2024-06-30) — no upstream security updates."
   warn "Recommend client migrate to AlmaLinux 9 long-term."
-  if grep -q '^mirrorlist=' /etc/yum.repos.d/CentOS-Base.repo 2>/dev/null; then
-    log "Repointing CentOS 7 repos to vault.centos.org (mirrors are dead)..."
-    sed -i.bh-preinstall \
-      -e 's|^mirrorlist=|#mirrorlist=|g' \
-      -e 's|^#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
-      /etc/yum.repos.d/CentOS-*.repo
+
+  # Test if yum is already working. If 'yum makecache fast' fails on base/extras/
+  # updates/epel, repoint those repos at the vault.
+  if ! yum -q makecache fast --disablerepo='mariadb' >/dev/null 2>&1; then
+    log "yum failing — repointing CentOS 7 repos to vault/archive..."
+
+    # 1. CentOS Base/Updates/Extras → vault.centos.org
+    if [ -f /etc/yum.repos.d/CentOS-Base.repo ] && \
+       ! grep -q 'vault.centos.org' /etc/yum.repos.d/CentOS-Base.repo; then
+      cp -a /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bh-preinstall
+      cat > /etc/yum.repos.d/CentOS-Base.repo <<'REPO'
+[base]
+name=CentOS-7 - Base
+baseurl=http://vault.centos.org/7.9.2009/os/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[updates]
+name=CentOS-7 - Updates
+baseurl=http://vault.centos.org/7.9.2009/updates/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[extras]
+name=CentOS-7 - Extras
+baseurl=http://vault.centos.org/7.9.2009/extras/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[centosplus]
+name=CentOS-7 - Plus
+baseurl=http://vault.centos.org/7.9.2009/centosplus/$basearch/
+gpgcheck=1
+enabled=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+REPO
+      ok "CentOS-Base.repo → vault.centos.org"
+    fi
+
+    # 2. EPEL → archives.fedoraproject.org
+    if [ -f /etc/yum.repos.d/epel.repo ] && \
+       ! grep -q 'archives.fedoraproject.org' /etc/yum.repos.d/epel.repo; then
+      cp -a /etc/yum.repos.d/epel.repo /etc/yum.repos.d/epel.repo.bh-preinstall
+      cat > /etc/yum.repos.d/epel.repo <<'REPO'
+[epel]
+name=Extra Packages for Enterprise Linux 7 - $basearch
+baseurl=https://archives.fedoraproject.org/pub/archive/epel/7/$basearch
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-7
+REPO
+      ok "epel.repo → archives.fedoraproject.org"
+    fi
+
+    # 3. MariaDB (10.x) → archive.mariadb.org. Preserve major version (10.3/4/5/6/11).
+    if [ -f /etc/yum.repos.d/mariadb.repo ] && \
+       grep -q 'yum.mariadb.org' /etc/yum.repos.d/mariadb.repo; then
+      cp -a /etc/yum.repos.d/mariadb.repo /etc/yum.repos.d/mariadb.repo.bh-preinstall
+      sed -i -E 's|http://yum\.mariadb\.org/(10\.[0-9]+)/centos7-amd64|https://archive.mariadb.org/mariadb-\1/yum/centos7-amd64|g' \
+        /etc/yum.repos.d/mariadb.repo
+      ok "mariadb.repo → archive.mariadb.org"
+    fi
+
     yum clean all >/dev/null 2>&1
-    yum makecache fast >/dev/null 2>&1 || warn "yum makecache had issues — continuing"
-    ok "Vault repos active"
+    if yum -q makecache fast --disablerepo='mariadb' >/dev/null 2>&1; then
+      ok "Vault repos active — yum cache rebuilt"
+    else
+      warn "yum still failing after repo fix — see /etc/yum.repos.d/ for other broken repos"
+      warn "Try: yum-config-manager --disable <repo_name>  for any non-essential broken repo"
+    fi
   else
-    ok "CentOS 7 repos already pointing to vault"
+    ok "CentOS 7 yum already functional (vault or working mirror)"
   fi
 fi
 
