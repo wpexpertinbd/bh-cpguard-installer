@@ -289,6 +289,10 @@ expect {
   -re {(?i)user_?list\M[^=]*=}                     { send "\r"; exp_continue }
   -re {(?i)web_server\M[^=]*=}                     { send "apache\r"; exp_continue }
   -re {(?i)waf_server\M[^=]*=}                     { send "apache\r"; exp_continue }
+  # Yes/No prompts (e.g. CWP suspend hook install) — answer NO by default.
+  # \[y/n\] matches literal [y/n] in Tcl regex (escaping the bracket).
+  -re {\[y/n\][^:]*:}                              { send "n\r"; exp_continue }
+  -re {\[y/n\]\s*$}                                { send "n\r"; exp_continue }
   eof
   timeout { puts "EXPECT TIMEOUT"; exit 124 }
 }
