@@ -72,6 +72,26 @@ command -v httpd  >/dev/null || die "httpd not found (Apache required)"
 [ -d /usr/local/apache/conf.d ] || die "Apache conf.d missing — non-standard CWP build?"
 ok "Apache present"
 
+# CentOS 7 reached EOL on 2024-06-30 — official mirrors stopped serving it.
+# Repoint repos to vault.centos.org (the archive) so yum can install deps.
+# Idempotent: only rewrites the mirrorlist/baseurl lines if not already done.
+if [ "$ID" = "centos" ] && [ "${VERSION_ID%%.*}" = "7" ]; then
+  warn "CentOS 7 is EOL (2024-06-30) — no upstream security updates."
+  warn "Recommend client migrate to AlmaLinux 9 long-term."
+  if grep -q '^mirrorlist=' /etc/yum.repos.d/CentOS-Base.repo 2>/dev/null; then
+    log "Repointing CentOS 7 repos to vault.centos.org (mirrors are dead)..."
+    sed -i.bh-preinstall \
+      -e 's|^mirrorlist=|#mirrorlist=|g' \
+      -e 's|^#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' \
+      /etc/yum.repos.d/CentOS-*.repo
+    yum clean all >/dev/null 2>&1
+    yum makecache fast >/dev/null 2>&1 || warn "yum makecache had issues — continuing"
+    ok "Vault repos active"
+  else
+    ok "CentOS 7 repos already pointing to vault"
+  fi
+fi
+
 FREE_DISK_MB=$(df -Pm /usr/local | awk 'NR==2{print $4}')
 [ "${FREE_DISK_MB:-0}" -ge 500 ] || die "Need ≥500MB free in /usr/local (have ${FREE_DISK_MB}MB)"
 RAM_MB=$(awk '/MemTotal/{printf "%d",$2/1024}' /proc/meminfo)
