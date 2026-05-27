@@ -334,9 +334,14 @@ if [ -f "$MSEC_CONF" ]; then
   # Comment any active owasp-old/owasp.conf Include
   sed -i -E 's|^[[:space:]]*Include[[:space:]]+"?/usr/local/apache/modsecurity-owasp-old/owasp\.conf"?|#&|' "$MSEC_CONF"
 
-  # Ensure cpguard.conf Include is present
+  # Ensure cpguard.conf Include is present.
+  # IMPORTANT: prepend an explicit newline because mod_security.conf often
+  # doesn't end with one — bare `echo >>` would glue our Include onto the
+  # last line (typically </IfModule>) producing:
+  #   </IfModule>Include "/usr/local/apache/cpguard.conf"
+  # which Apache parses as 'Include without matching <IfModule>'.
   if ! grep -qE '^[[:space:]]*Include[[:space:]]+"?/usr/local/apache/cpguard\.conf"?' "$MSEC_CONF"; then
-    echo 'Include "/usr/local/apache/cpguard.conf"' >> "$MSEC_CONF"
+    printf '\n\nInclude "/usr/local/apache/cpguard.conf"\n' >> "$MSEC_CONF"
     ok "Added cpguard.conf Include"
   else
     ok "cpguard.conf Include already present"
