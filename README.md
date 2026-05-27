@@ -37,12 +37,30 @@ Idempotent — safe to re-run. Logs to `/var/log/bh-cpguard-install.log`. A pars
 
 cPGuard's installer expects `/usr/local/apache/modsecurity-owasp-old/` to exist before it runs (it patches around that ruleset's Include line). **If the server is on Comodo WAF**, you must switch it to OWASP first:
 
-1. CWP admin → Security → ModSecurity
-2. Switch active ruleset to **OWASP** (or "OWASP rules")
-3. Save / Install
-4. Then run this script
+1. CWP admin → **Security → ModSecurity → Configure Mod Security**
+2. Set the panel to exactly this configuration (everything else OFF):
 
-The script's preflight aborts with this instruction if it detects OWASP is missing — so you can't accidentally half-install.
+   **ModSec Rules profile** (only one ON)
+   - ✅ **OWASP old** (Old rules which come as default with CWP) — **ON**
+   - ❌ OWASP latest — OFF
+   - ❌ Comodo WAF — OFF
+
+   **Rules Engine** (only one ON)
+   - ✅ **Process the rules** — ON
+   - ❌ Do not process the rules — OFF
+   - ❌ Process the rules in verbose mode... — OFF
+
+   **Audit Log Level** (only one ON)
+   - ❌ Log all transactions — OFF
+   - ❌ Do not log any transactions — OFF
+   - ✅ **Only log noteworthy transactions** — ON
+
+3. Click **Save configurations** (top right)
+4. Click **Restart** under Apache Webserver (top right)
+5. Confirm the status badge says **ModSec is: ✓ Installed**
+6. Now run this script
+
+The script's preflight aborts with this instruction if it detects OWASP-old is missing — so you can't accidentally half-install.
 
 **This is transitional.** Once cPGuard is in, the active ruleset becomes cPGuard's own — neither Comodo nor OWASP is active anymore. The OWASP switch is just a ~5-minute prerequisite during install.
 
