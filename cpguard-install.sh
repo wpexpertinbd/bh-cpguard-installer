@@ -334,17 +334,21 @@ if [ -f "$MSEC_CONF" ]; then
   # Comment any active owasp-old/owasp.conf Include
   sed -i -E 's|^[[:space:]]*Include[[:space:]]+"?/usr/local/apache/modsecurity-owasp-old/owasp\.conf"?|#&|' "$MSEC_CONF"
 
-  # Ensure cpguard.conf Include is present.
-  # IMPORTANT: prepend an explicit newline because mod_security.conf often
-  # doesn't end with one — bare `echo >>` would glue our Include onto the
-  # last line (typically </IfModule>) producing:
-  #   </IfModule>Include "/usr/local/apache/cpguard.conf"
-  # which Apache parses as 'Include without matching <IfModule>'.
-  if ! grep -qE '^[[:space:]]*Include[[:space:]]+"?/usr/local/apache/cpguard\.conf"?' "$MSEC_CONF"; then
-    printf '\n\nInclude "/usr/local/apache/cpguard.conf"\n' >> "$MSEC_CONF"
-    ok "Added cpguard.conf Include"
-  else
+  # Ensure cpguard.conf Include is present, placed INSIDE the <IfModule
+  # security2_module> block (right after the commented OWASP line) — matches
+  # the BiswasHost manual procedure exactly. Falls back to end-of-file only
+  # if the OWASP line isn't there (unusual config).
+  if grep -qE '^[[:space:]]*Include[[:space:]]+"?/usr/local/apache/cpguard\.conf"?' "$MSEC_CONF"; then
     ok "cpguard.conf Include already present"
+  elif grep -qE '^[[:space:]]*#.*modsecurity-owasp-old/owasp\.conf' "$MSEC_CONF"; then
+    # Insert right after the now-commented OWASP line, preserving indentation
+    sed -i '/^[[:space:]]*#.*modsecurity-owasp-old\/owasp\.conf/a\            Include "/usr/local/apache/cpguard.conf"' \
+      "$MSEC_CONF"
+    ok "Added cpguard.conf Include inside <IfModule> block"
+  else
+    # Fallback: append at end with leading newlines (covers weird configs)
+    printf '\n\nInclude "/usr/local/apache/cpguard.conf"\n' >> "$MSEC_CONF"
+    warn "OWASP Include line not found; appended cpguard.conf Include at end of file"
   fi
 else
   warn "$MSEC_CONF missing — installer may not have created it. Skipping patch."
