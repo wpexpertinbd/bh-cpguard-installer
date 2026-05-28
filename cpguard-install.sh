@@ -142,14 +142,8 @@ REPO
       ok "epel.repo → archives.fedoraproject.org"
     fi
 
-    # 3. MariaDB (10.x) → archive.mariadb.org. Preserve major version (10.3/4/5/6/11).
-    if [ -f /etc/yum.repos.d/mariadb.repo ] && \
-       grep -q 'yum.mariadb.org' /etc/yum.repos.d/mariadb.repo; then
-      cp -a /etc/yum.repos.d/mariadb.repo /etc/yum.repos.d/mariadb.repo.bh-preinstall
-      sed -i -E 's|http://yum\.mariadb\.org/(10\.[0-9]+)/centos7-amd64|https://archive.mariadb.org/mariadb-\1/yum/centos7-amd64|g' \
-        /etc/yum.repos.d/mariadb.repo
-      ok "mariadb.repo → archive.mariadb.org"
-    fi
+    # 3. MariaDB (10.x) → archive.mariadb.org. Preserve major version + distro path.
+    #    Handled in the OS-agnostic block below since it also breaks on AlmaLinux 8.
 
     yum clean all >/dev/null 2>&1
     if yum -q makecache fast --disablerepo='mariadb' >/dev/null 2>&1; then
@@ -160,6 +154,29 @@ REPO
     fi
   else
     ok "CentOS 7 yum already functional (vault or working mirror)"
+  fi
+fi
+
+# MariaDB 10.x EOL fix — affects ANY distro (CentOS 7, AlmaLinux 8, Rocky 8, etc).
+# yum.mariadb.org dropped 10.4 mirrors in June 2024. Same archive URL works for
+# all distro paths (centos7-amd64, centos8-amd64, rhel8-amd64, etc).
+if [ -f /etc/yum.repos.d/mariadb.repo ] && \
+   grep -qE 'https?://yum\.mariadb\.org/10\.[0-9]+' /etc/yum.repos.d/mariadb.repo; then
+  # Test if MariaDB repo is reachable
+  PKG_MGR="dnf"; command -v dnf >/dev/null 2>&1 || PKG_MGR="yum"
+  if ! $PKG_MGR -q --disablerepo='*' --enablerepo='mariadb' makecache >/dev/null 2>&1; then
+    log "MariaDB repo failing (likely EOL) — repointing to archive.mariadb.org..."
+    cp -a /etc/yum.repos.d/mariadb.repo /etc/yum.repos.d/mariadb.repo.bh-preinstall
+    sed -i -E 's|https?://yum\.mariadb\.org/(10\.[0-9]+)/([a-z0-9-]+)|https://archive.mariadb.org/mariadb-\1/yum/\2|g' \
+      /etc/yum.repos.d/mariadb.repo
+    $PKG_MGR clean all >/dev/null 2>&1
+    if $PKG_MGR -q --disablerepo='*' --enablerepo='mariadb' makecache >/dev/null 2>&1; then
+      ok "mariadb.repo → archive.mariadb.org (working)"
+    else
+      warn "Archive URL also failed — disabling mariadb repo (cPGuard doesn't need MariaDB packages)"
+      $PKG_MGR config-manager --disable mariadb >/dev/null 2>&1 || \
+        sed -i 's|^enabled=1|enabled=0|' /etc/yum.repos.d/mariadb.repo
+    fi
   fi
 fi
 
